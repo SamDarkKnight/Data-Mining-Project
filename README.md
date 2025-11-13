@@ -1,113 +1,203 @@
-# Fake News Detection using Machine Learning
+# Fake News Propagation Modeling with a Temporal GNN
 
-*A data-mining project by Steve, Suhana, Joel*
+*A research / demo project by Steve, Suhana, Joel*
 
-## 📖 Overview
+This repository moved from a classic text-classification demo to a small research prototype that models how news (real or fake) spreads as cascades and predicts cascade size using a **Temporal Graph Neural Network (GNN)** over snapshots of user-interaction graphs.
 
-This project implements a machine-learning pipeline for detecting fake news articles. Using text data (news headlines and/or bodies) labeled as real or fake, the notebook builds, evaluates and compares several classification models to distinguish misleading content from authentic articles.
+---
 
-## 🧰 Contents
+# 📌 What this project does (short)
 
-* `Fake_News_Detection_using_machine_learning.ipynb` — the Jupyter notebook which contains all of the processing, modelling and evaluation steps.
-* (Optionally) Dataset files — if any external CSV/JSON data is used, put them in a `data/` folder (or link to them).
-* (Optionally) `requirements.txt` — list of Python dependencies (e.g., pandas, scikit-learn, nltk etc.).
-* (Optionally) `README.md` (this file) — overview and instructions for using the project.
+* Synthesises social “events” (retweets / reposts) for many articles and builds time-ordered snapshots of user interaction graphs.
+* Encodes per-event text with a sentence transformer and aggregates per-user embeddings.
+* Builds graph snapshots (node features = user embedding + node degree) and feeds sequences of snapshot graphs into a Temporal GNN (GCN per snapshot + GRU across time) to predict the final cascade size (log-scaled).
+* Trains and evaluates the model, saves `temporal_gnn_model.pth`, and visualises propagation via network animations.
 
-## ✅ Features
+---
 
-* Pre-processing of news text (cleaning, tokenizing, stop-word removal).
-* Vectorisation of text (e.g., TF-IDF, Count Vectors).
-* Training and comparing multiple classification algorithms (for example: Logistic Regression, Naive Bayes, Random Forest, etc.).
-* Evaluation of model performance (accuracy, precision, recall, F1-score, confusion matrix).
-* Insights on which features or models perform best at fake-news detection.
+# 🔧 Key files / structure
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-Ensure you have Python (3.x) installed. It’s recommended to use a virtual environment.
-Install required packages (example):
-
-```bash
-pip install pandas numpy scikit-learn matplotlib seaborn nltk
+```
+Data-Mining-Project/
+│
+├── data/                             ← (optional) store real datasets here
+│
+├── notebook.ipynb                    ← Jupyter notebook containing the pipeline and visualizations
+├── temporal_gnn_model.pth            ← saved PyTorch model (after training)
+├── requirements.txt                  ← pip dependencies (see below)
+└── README.md                         ← this file
 ```
 
-### Running the Notebook
+---
 
-1. Clone this repository:
+# 🧰 Main components (what’s in the code)
+
+* **Synthetic data generator**
+
+  * `generate_synthetic_events()` — creates synthetic cascades with timestamps, user ids, parent_user_id (reply/retweet edges), and small text labels (`"original"` / `"retweet"`).
+
+* **Snapshot construction**
+
+  * `build_snapshots_for_article(events, snapshot_count, window_seconds, embedder)` — slices events into `snapshot_count` cumulative time windows, creates node lists, edge_index, and per-node feature vectors (mean of that user’s sentence embeddings + node degree).
+
+* **Dataset / dataloader**
+
+  * `CascadeSequenceDataset` — groups events by article and returns a sequence of `torch_geometric.data.Data` graphs plus a log-scaled target (final cascade size).
+  * `collate_with_counts` — custom collate fn that batches per-time graphs while tracking node counts so we can later un-batch per-article.
+
+* **Model**
+
+  * `SnapshotEncoder` — two-layer GCN that encodes a snapshot into node embeddings.
+  * `TemporalGNN` — applies SnapshotEncoder at each time step, aggregates node embeddings to per-graph vectors, sequences them into a GRU, then an MLP to regress final cascade size.
+
+* **Embedding**
+
+  * `SentenceTransformer('all-MiniLM-L6-v2')` — produces per-event text embeddings used to build node features.
+
+* **Training & evaluation**
+
+  * Training loop (Adam + StepLR), MSE loss on log1p targets, simple validation, saving state to `temporal_gnn_model.pth`.
+  * Quick scatter plot of true vs predicted cascade sizes (denormalised with `expm1`) and a textual printout of a few predictions.
+
+* **Visualization**
+
+  * `visualize_fake_news_propagation(...)` — NetworkX + `matplotlib.animation.FuncAnimation` to show a simple SIR-like diffusion (for demo/illustration).
+
+---
+
+# ✅ Features
+
+* End-to-end pipeline: synthetic data → snapshot graphs → temporal GNN → evaluation.
+* Uses sentence embeddings to incorporate textual signals in node features.
+* Graph neural networks (GCN) for structural modeling per snapshot.
+* Temporal modeling with GRU to capture evolution across snapshots.
+* Graph animation helper to visualise propagation dynamics.
+
+---
+
+# 📦 Dependencies
+
+Minimum libraries used in the notebook / script:
+
+* `python >= 3.8`
+* `numpy`, `pandas`
+* `matplotlib`, `networkx`
+* `tqdm`
+* `sentence-transformers`
+* `torch` (matching your CUDA / CPU), `torchvision`, `torchaudio`
+* `torch_geometric` and required PyG support packages
+
+Example `requirements.txt` snippet:
+
+```
+numpy
+pandas
+matplotlib
+networkx
+tqdm
+sentence-transformers
+torch>=2.0
+torchvision
+torchaudio
+torch-geometric
+```
+
+> Note: installing `torch_geometric` requires matching wheels for your `torch` version/platform. See PyG install docs if you hit wheel issues.
+
+Quick pip install (CPU, example):
+
+```bash
+pip install numpy pandas matplotlib networkx tqdm sentence-transformers
+pip install torch torchvision torchaudio               # choose CPU vs CUDA as needed
+# PyG wheel depends on torch version; example (CPU) may be:
+pip install torch-geometric torch-scatter torch-sparse -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
+```
+
+---
+
+# 🚀 How to run
+
+1. (Optional) Clone the repo
 
    ```bash
    git clone https://github.com/SamDarkKnight/Data-Mining-Project.git
    cd Data-Mining-Project
    ```
-2. If required, place your dataset file(s) in a folder named `data/`, and update the notebook path accordingly.
-3. Launch Jupyter Notebook:
+
+2. Install dependencies (see above).
+
+3. Launch the notebook:
 
    ```bash
-   jupyter notebook
+   jupyter notebook notebook.ipynb
    ```
-4. Open `Fake_News_Detection_using_machine_learning.ipynb` and run the cells sequentially.
-5. Inspect results, plots, and model comparisons as shown in the notebook.
 
-## 🧩 Project Structure
+   or run the script cells in order. The code auto-detects device (`cuda` if available).
 
-```
-Data-Mining-Project/
-│
-├── data/                        ← (optional) folder for raw data files  
-│      └── fake.csv      ← example dataset of real vs fake news
-            true.csv
-│
-├── Fake_News_Detection_using_machine_learning.ipynb  
-├── requirements.txt             ← (optional) list of Python packages  
-└── README.md                    ← this file  
-```
+4. The notebook will:
 
-## 📚 Dataset
-
-The dataset used in this project contains news items labeled as “real” or “fake”. It typically includes fields such as *title*, *text/body*, *label*.
-
-True.csv: https://drive.google.com/file/d/1iX49I9BRRzTKaOTT7jRXaV22uRPg35kg/view?usp=sharing
-
-Fake.csv: https://drive.google.com/file/d/1XJw5fvMvFgy54aqHXr0woJuja6ljukMB/view?usp=sharing
-
-## 🧪 Methodology
-
-1. Load and preview the dataset (check for missing values, class balance).
-2. Clean & pre-process text: remove punctuation, stop words, lowercase conversion, tokenization, etc.
-3. Feature extraction: convert text into numeric vectors (TF-IDF / Count Vector).
-4. Split into training & test sets (e.g., 70/30 or 80/20).
-5. Train multiple classifiers (e.g., Logistic Regression, Naive Bayes, Random Forest).
-6. Evaluate models on test set: compute accuracy, precision, recall, F1, confusion matrix.
-7. Compare and document results: which model performs best, and why.
-8. (Optional) Visualise results (bar charts of performance metrics, word-clouds of top features).
-
-## 📈 Results
-
-* Classifier X achieved highest accuracy of **80%**.
-* Model Y had better recall for “fake news” class, but lower precision.
-* Feature importance shows that words like “claim”, “report”, “fake” appear more often in fake-news articles.
-* The dataset is somewhat imbalanced: real news articles outnumber fake by ~ 2 : 1.
-
-## 🧠 Insights & Future Work
-
-* The pipeline shows that basic text-vectorisation + classic ML models already yield meaningful performance in fake-news detection.
-* However, more advanced techniques (deep learning with embeddings, transformer models) could further improve accuracy.
-* Addressing dataset imbalance, deeper feature engineering (e.g., metadata: source, date, author) or incorporating network features (sharing patterns) are possible next steps.
-* A production-ready system would require real-time data ingestion, continuous retraining and robust monitoring.
-
-## 🤝 Contributing
-
-Contributions are welcome! If you’d like to improve the notebook, add new models, or extend datasets:
-
-1. Fork the repository.
-2. Create a new branch for your feature.
-3. Submit a pull request and describe your changes.
-
-## 📄 License
-
-This project is provided for academic and educational use.
+   * Generate synthetic cascades,
+   * Build sentence embeddings,
+   * Create the dataset and dataloaders,
+   * Train the Temporal GNN for `EPOCHS` (default in code: 5),
+   * Save the trained model to `temporal_gnn_model.pth`,
+   * Show prediction scatter and animate propagation.
 
 ---
 
-**Thank you for checking out this project – happy data-mining!**
+# 🔬 Example hyperparameters (from the code)
+
+* `SENT_EMB_MODEL = 'all-MiniLM-L6-v2'`
+* `TIME_WINDOW_SECONDS = 3600`
+* `SNAPSHOT_COUNT = 8`
+* `EPOCHS = 5`, batch size = 8, optimizer = Adam (lr=1e-4)
+* Loss = MSE on `log1p(cascade_size)` target
+
+These are easy to change at the top of the notebook for experiments.
+
+---
+
+# 📈 Results (example / demo)
+
+When run with the provided synthetic setup the notebook prints training/validation loss each epoch, saves the model, and produces a scatter plot of true vs predicted cascade sizes (expm1 to denormalise). The printed sample predictions show the model’s ability to approximate cascade sizes on held-out synthetic data (results will vary with random seed and hyperparameters).
+
+---
+
+# 🧠 Notes, limitations & next steps
+
+* **Synthetic data** is used for prototyping — for production / research you should use real social trace datasets (with timestamps, user IDs, reply/reshare relationships).
+* Sentence embeddings for `"original"` / `"retweet"` are placeholders in the demo. Replace with actual article headlines / content for meaningful text signals.
+* The current target is *cascade size* (regression). For classification (will it go viral?), you can threshold size or change the MLP to output logits.
+* Consider richer features: user metadata, temporal inter-arrival times, edge weights, or attention mechanisms across nodes.
+* For larger graphs, batching strategies and memory optimisations will be necessary (PyG supports many utilities).
+
+---
+
+# 🤝 Contributing
+
+Contributions welcome — ideas to try:
+
+* Replace synthetic generator with a real dataset (put CSVs in `data/`).
+* Add classification heads (viral / non-viral).
+* Experiment with other GNN layers (GraphSAGE, GAT), transformer encoders across snapshots, or contrastive pretraining.
+* Improve the visualization (save animation to mp4/gif).
+
+Workflow:
+
+1. Fork
+2. Branch with feature
+3. Open PR with a clear description
+
+---
+
+# 📄 License
+
+Provided for educational and research use. Cite or attribute if you use the code or ideas.
+
+---
+
+If you want, I can:
+
+* produce an updated `requirements.txt` with exact pinned versions used in the notebook,
+* convert the notebook into a runnable Python script (`train.py`) with CLI args,
+* or trim the README into a short project blurb for GitHub — tell me which one and I’ll produce it.
